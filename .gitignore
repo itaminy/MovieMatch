@@ -33,3 +33,4 @@ htmlcov/
 # Generated reports
 /reports/figures/
 /reports/summary.json
+/reports/evaluation/
