@@ -14,7 +14,7 @@ SQLite доступен через стандартный модуль `sqlite3`
 ## Структура
 
 ```text
-backend/       # FastAPI и маршрут /health
+backend/       # FastAPI: main.py, routes.py, schemas.py, service.py
 frontend/      # Интерфейс Streamlit
 ml/            # Загрузчик, EDA, content_based.py, collaborative.py и демо моделей
 data/          # Локальная папка ml-latest-small с настоящим MovieLens
@@ -42,11 +42,27 @@ requirements.txt
 Запустите API:
 
 ```powershell
-.\venv\Scripts\python.exe -m uvicorn backend.main:app --reload
+.\venv\Scripts\python.exe -m uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 Проверка: <http://127.0.0.1:8000/health> возвращает `{"status":"ok"}`.
 Документация API: <http://127.0.0.1:8000/docs>.
+
+Uvicorn требует путь `backend.main:app` (с именем ASGI-приложения после двоеточия).
+После активации существующего venv можно использовать:
+`python -m uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000`.
+Перед запуском скачайте MovieLens по инструкции ниже. Отсутствие или ошибка CSV
+останавливает запуск с сообщением `MovieMatch startup failed` и указанием файла.
+
+Если Windows отклоняет порт 8000 с `WinError 10013`, используйте свободный порт:
+
+```powershell
+.\venv\Scripts\python.exe -m uvicorn backend.main:app --reload --host 127.0.0.1 --port 8001
+```
+
+В этом случае адрес API и Swagger — `http://127.0.0.1:8001` и
+`http://127.0.0.1:8001/docs`. В текущей Windows-сессии проверка запуска с reload
+выполнялась на 8001, поскольку открытие сокета 8000 отклонялось системой.
 
 Во втором терминале из корня проекта запустите интерфейс:
 
@@ -68,6 +84,82 @@ requirements.txt
 и расчёт сходства только для одного выбранного фильма.
 Проверки данных используют небольшие искусственные CSV во временных каталогах;
 скачивание MovieLens и отдельный запуск API для тестов не нужны.
+
+## REST API
+
+Базовый адрес — `http://127.0.0.1:8000`. Swagger UI:
+[GET /docs](http://127.0.0.1:8000/docs); OpenAPI: `/openapi.json`.
+
+| Маршрут | Параметры и поведение |
+|---|---|
+| `GET /health` | `{"status":"ok"}` после успешного старта |
+| `GET /movies` | `query` — необязательная буквальная подстрока названия без учёта регистра; `limit` — 1–100, по умолчанию 20 |
+| `GET /movies/{movie_id}` | Фильм с данным положительным целым ID; 404, если его нет |
+| `GET /recommendations/{movie_id}` | Рекомендации выбранного метода, исходный фильм и применённые параметры |
+
+Поиск возвращает JSON-массив объектов с `movieId`, `title`, `genres`. Пустой
+или отсутствующий query возвращает первые фильмы по возрастанию movieId;
+нет совпадений — пустой массив. Метаданные, отсутствующие в CSV, передаются как null.
+Тот же каталог используется моделями и получением фильма по ID.
+
+Параметры рекомендаций:
+
+- `method`: `content_based` (по умолчанию), `item_based` или `hybrid`.
+- `top_n`: целое число от 1 до 50, по умолчанию 10.
+- `alpha`: конечное число от 0 до 1. Влияет только на hybrid, по умолчанию **1.0** —
+  значение, ранее выбранное на validation. При других методах alpha игнорируется
+  и в ответе равен null; границы входного параметра всё равно проверяются.
+- `min_common_users` в CF/Hybrid фиксирован равным 3 и отражается в ответе;
+  для Content-Based это поле равно null.
+
+Примеры из PowerShell:
+
+```powershell
+Invoke-RestMethod "http://127.0.0.1:8000/health"
+Invoke-RestMethod "http://127.0.0.1:8000/movies?query=toy&limit=5"
+Invoke-RestMethod "http://127.0.0.1:8000/movies/1"
+Invoke-RestMethod "http://127.0.0.1:8000/recommendations/1?method=content_based&top_n=5"
+Invoke-RestMethod "http://127.0.0.1:8000/recommendations/1?method=item_based&top_n=10"
+Invoke-RestMethod "http://127.0.0.1:8000/recommendations/1?method=hybrid&alpha=0.75&top_n=10"
+```
+
+Структура ответа рекомендаций (список ниже показан сокращённо):
+
+```json
+{
+  "movie": {"movieId": 1, "title": "Toy Story (1995)", "genres": "Adventure|Animation|Children|Comedy|Fantasy"},
+  "method": "hybrid",
+  "parameters": {"top_n": 10, "alpha": 1.0, "min_common_users": 3},
+  "recommendations": [
+    {"movieId": 3114, "title": "Toy Story 2 (1999)", "genres": "Adventure|Animation|Children|Comedy|Fantasy", "similarity_score": 0.572601}
+  ]
+}
+```
+
+Каждая рекомендация содержит `movieId`, `title`, `genres`, `similarity_score`.
+Исходный фильм исключён, сортировка детерминирована. Если подходящих соседей мало,
+список короче top_n или пустой; это успешный ответ 200. Неизвестный ID даёт 404,
+неверные типы, границы или method — 422 с JSON `detail`.
+
+Данные и модели создаются **один раз на lifespan каждого процесса**. Импорт
+`backend.main` не читает CSV. Сервис создаёт Hybrid и использует его уже
+инициализированные Content-Based/Collaborative компоненты для всех методов.
+Alpha отдельного запроса задаётся в лёгкой локальной копии оболочки Hybrid;
+матрицы и модели общие и не изменяются. Это исключает взаимное влияние
+одновременных запросов с разными alpha. При `--reload` новый процесс загружает
+данные заново, что ожидаемо. Запросы не запускают обучение, подбор alpha или EDA.
+
+**Режим API — serving на всех локальных ratings**, включая оценки, которые
+offline pipeline откладывал в test. Это отдельный production/demo-сценарий,
+а не модель для измерения test-метрик. Сравнение offline-метрик по API некорректно;
+оно по-прежнему выполняется только через `ml.run_evaluation` с изолированными
+train/validation/test. API не читает и не пересчитывает evaluation-отчёты.
+После изменения CSV перезапустите сервер для обновления моделей.
+
+API-тесты используют TestClient, lifespan и настоящие ML-классы на маленьких
+таблицах в памяти. Локальный MovieLens и повторная offline-оценка им не нужны.
+В `backend/routes.py` находятся маршруты, в `schemas.py` — Pydantic-контракты,
+в `service.py` — каталог и обращение к существующим ML-моделям.
 
 ## Данные MovieLens Latest Small
 
