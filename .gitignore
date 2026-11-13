@@ -25,3 +25,11 @@ htmlcov/
 *.sqlite-*
 *.sqlite3
 *.sqlite3-*
+
+# MovieLens dataset
+/data/ml-latest-small/
+/data/ml-latest-small.zip
+
+# Generated reports
+/reports/figures/
+/reports/summary.json

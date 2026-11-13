@@ -1,12 +1,13 @@
 # MovieMatch
 
 MovieMatch — рекомендательная система фильмов с машинным обучением.
-На текущем этапе создан каркас: FastAPI API, стартовая страница Streamlit
-и тест доступности API. ML-модели, датасеты и авторизация пока отсутствуют.
+На текущем этапе доступны FastAPI API, стартовая страница Streamlit,
+загрузка и проверка CSV MovieLens, исследовательский анализ данных (EDA).
+ML-модели и авторизация пока отсутствуют.
 
 ## Технологии
 
-Python 3.14, FastAPI, Streamlit, Pandas, NumPy, Scikit-learn, SQLite и Pytest.
+Python 3.14, FastAPI, Streamlit, Pandas, NumPy, Matplotlib, Scikit-learn, SQLite и Pytest.
 SQLite доступен через стандартный модуль `sqlite3`; отдельная установка не нужна.
 `httpx` используется клиентом API в тестах, `uvicorn` — для запуска FastAPI.
 
@@ -15,8 +16,9 @@ SQLite доступен через стандартный модуль `sqlite3`
 ```text
 backend/       # FastAPI и маршрут /health
 frontend/      # Интерфейс Streamlit
-ml/            # Будущие компоненты машинного обучения
-data/          # Будущие данные
+ml/            # data_loader.py: проверка CSV; eda.py: анализ и графики
+data/          # Локальная папка ml-latest-small с настоящим MovieLens
+reports/       # Автоматические summary.json и figures/*.png
 notebooks/     # Будущие исследовательские ноутбуки
 tests/         # Автоматические тесты
 requirements.txt
@@ -61,7 +63,81 @@ requirements.txt
 .\venv\Scripts\python.exe -m pytest
 ```
 
-Тест проверяет HTTP-статус и JSON маршрута `/health`; отдельный запуск API не нужен.
+Тесты проверяют `/health`, загрузчик, ошибки данных, статистику и создание графиков.
+Проверки данных используют небольшие искусственные CSV во временных каталогах;
+скачивание MovieLens и отдельный запуск API для тестов не нужны.
+
+## Данные MovieLens Latest Small
+
+Источник: [GroupLens MovieLens Latest Small](https://files.grouplens.org/datasets/movielens/ml-latest-small.zip).
+Описание формата и условия использования находятся в
+[README GroupLens](https://files.grouplens.org/datasets/movielens/ml-latest-small-README.html).
+Версия Latest может обновляться; результаты анализа вычисляются по локальным CSV.
+
+Из корня проекта в PowerShell скачайте и распакуйте архив:
+
+```powershell
+Invoke-WebRequest -Uri "https://files.grouplens.org/datasets/movielens/ml-latest-small.zip" -OutFile "data/ml-latest-small.zip"
+Expand-Archive -LiteralPath "data/ml-latest-small.zip" -DestinationPath "data" -Force
+```
+
+Если сеть недоступна, скачайте архив по ссылке в браузере на компьютере с доступом
+к сети, перенесите его и распакуйте в `data/`. Ожидаются файлы:
+
+```text
+data/ml-latest-small/movies.csv
+data/ml-latest-small/ratings.csv
+data/ml-latest-small/tags.csv
+data/ml-latest-small/links.csv
+```
+
+Фиктивный датасет для рабочего анализа не создаётся. CSV не входят в Git.
+Загрузчик `ml.data_loader.load_data()` читает UTF-8 CSV и возвращает словарь
+DataFrame с ключами `movies`, `ratings`, `tags`, `links`. Все четыре файла и
+обязательные столбцы проверяются до анализа. ID и timestamp приводятся к nullable
+`Int64`, rating — к `Float64`, текст — к `string`. ID должны быть положительными,
+timestamp — неотрицательным целым числом секунд Unix, оценки — от 0.5 до 5 с шагом 0.5.
+Непустые значения неверного типа вызывают `ValueError` с именем файла и столбца;
+отсутствующие файлы — `FileNotFoundError`. Дополнительные столбцы сохраняются.
+
+Пропуски и дубликаты сохраняются для исследования, не удаляются и не заполняются.
+Пустые поля и текстовые поля из пробелов считаются пропусками; строка `NA`
+сохраняется как текст. Внешние ссылки IMDb/TMDb могут отсутствовать.
+
+## Запуск EDA
+
+Обновите зависимости и запустите анализ из корня проекта:
+
+```powershell
+.\venv\Scripts\python.exe -m pip install -r requirements.txt
+.\venv\Scripts\python.exe -m ml.eda
+```
+
+Можно указать другие директории:
+
+```powershell
+.\venv\Scripts\python.exe -m ml.eda --data-dir data/ml-latest-small --output-dir reports
+```
+
+Результаты (повторный запуск перезаписывает файлы):
+
+- `reports/summary.json`: количества фильмов, пользователей, оценок и тегов;
+  пропуски по столбцам, полные дубликаты строк и дубликаты ключей; общий средний
+  рейтинг, средние по пользователям и фильмам, частоты оценок и жанров, топ фильмов.
+- `reports/figures/rating_distribution.png`: распределение оценок.
+- `reports/figures/ratings_per_movie.png`: распределение числа оценок на фильм,
+  включая фильмы без оценок.
+- `reports/figures/top_10_genres.png`: десять жанров с наибольшим количеством фильмов.
+- `reports/figures/top_10_movies.png`: десять фильмов с наибольшим количеством оценок.
+
+Пользователи считаются по объединению ratings и tags; отдельно выводится число
+пользователей с оценками. Средние и число оценок фильма не учитывают пустые rating;
+общее число строк ratings включает их. Повторные оценки сохраняют свой вес.
+Жанры разделяются по `|`; один фильм может учитываться в нескольких жанрах,
+маркер `(no genres listed)` не считается жанром. При повторном movieId метаданные
+берутся из первой строки, неизвестные movieId из ratings остаются в статистике.
+Графики сохраняются через Matplotlib Agg: окно GUI и запущенные серверы не нужны.
+Автоматические отчёты исключены из Git; обучение модели не выполняется.
 
 ## Совместимость
 
