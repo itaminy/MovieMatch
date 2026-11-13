@@ -1,0 +1,9 @@
+# Python 3.14; SQLite входит в стандартную библиотеку (sqlite3).
+fastapi>=0.119.1,<1.0
+uvicorn>=0.38.0,<1.0
+streamlit>=1.51.0,<2.0
+pandas>=2.3.3,<4.0
+numpy>=2.3.3,<3.0
+scikit-learn>=1.7.2,<2.0
+pytest>=8.4.2,<10.0
+httpx>=0.28.1,<1.0

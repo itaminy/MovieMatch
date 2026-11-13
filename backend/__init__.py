@@ -1,0 +1,1 @@
+"""Backend приложения MovieMatch."""

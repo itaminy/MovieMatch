@@ -1,0 +1,27 @@
+# Виртуальные окружения
+venv/
+.venv/
+env/
+
+# Кэш Python и инструментов
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+.coverage
+htmlcov/
+
+# Локальные настройки и секреты
+.env
+.env.*
+!.env.example
+
+# Локальные базы данных SQLite и служебные файлы
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
