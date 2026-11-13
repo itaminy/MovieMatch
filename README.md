@@ -1,7 +1,7 @@
 # MovieMatch
 
 MovieMatch — рекомендательная система фильмов с машинным обучением.
-На текущем этапе доступны FastAPI API, стартовая страница Streamlit,
+На текущем этапе доступны FastAPI API, пользовательский интерфейс Streamlit,
 загрузка и проверка CSV MovieLens, исследовательский анализ данных (EDA)
 и рекомендательные модели на основе жанров и пользовательских оценок.
 
@@ -42,27 +42,17 @@ requirements.txt
 Запустите API:
 
 ```powershell
-.\venv\Scripts\python.exe -m uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
-```
-
-Проверка: <http://127.0.0.1:8000/health> возвращает `{"status":"ok"}`.
-Документация API: <http://127.0.0.1:8000/docs>.
-
-Uvicorn требует путь `backend.main:app` (с именем ASGI-приложения после двоеточия).
-После активации существующего venv можно использовать:
-`python -m uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000`.
-Перед запуском скачайте MovieLens по инструкции ниже. Отсутствие или ошибка CSV
-останавливает запуск с сообщением `MovieMatch startup failed` и указанием файла.
-
-Если Windows отклоняет порт 8000 с `WinError 10013`, используйте свободный порт:
-
-```powershell
 .\venv\Scripts\python.exe -m uvicorn backend.main:app --reload --host 127.0.0.1 --port 8001
 ```
 
-В этом случае адрес API и Swagger — `http://127.0.0.1:8001` и
-`http://127.0.0.1:8001/docs`. В текущей Windows-сессии проверка запуска с reload
-выполнялась на 8001, поскольку открытие сокета 8000 отклонялось системой.
+Проверка: <http://127.0.0.1:8001/health> возвращает `{"status":"ok"}`.
+Документация API: <http://127.0.0.1:8001/docs>.
+
+Uvicorn требует путь `backend.main:app` (с именем ASGI-приложения после двоеточия).
+После активации существующего venv можно использовать:
+`python -m uvicorn backend.main:app --reload --host 127.0.0.1 --port 8001`.
+Перед запуском скачайте MovieLens по инструкции ниже. Отсутствие или ошибка CSV
+останавливает запуск с сообщением `MovieMatch startup failed` и указанием файла.
 
 Во втором терминале из корня проекта запустите интерфейс:
 
@@ -71,7 +61,34 @@ Uvicorn требует путь `backend.main:app` (с именем ASGI-при�
 ```
 
 Откройте <http://localhost:8501>. Для остановки каждого сервера нажмите `Ctrl+C`.
-На этом этапе интерфейс показывает сообщение о разработке и не обращается к API.
+Интерфейс использует FastAPI на порту **8001**, Streamlit — **8501**.
+
+### Использование интерфейса
+
+Введите `Toy Story`, нажмите «Найти», выберите фильм по названию и movieId.
+Показано до 50 совпадений; при необходимости уточните запрос. Выберите Content-Based,
+Item-Based или Hybrid и число рекомендаций (1–50, по умолчанию 10).
+В Hybrid доступен alpha (0–1, по умолчанию 1.0): вес Item-Based.
+При 0 используются только жанры, при 1 — только оценки зрителей.
+Нажмите «Получить рекомендации»: таблица показывает названия, жанры и similarity_score.
+Исходный фильм исключён. Результаты сохраняются при перерисовках и сбрасываются
+при изменении фильма, поискового запроса или параметров.
+
+**MOVIEMATCH_API_URL** задаёт адрес API (по умолчанию `http://127.0.0.1:8001`).
+Установите переменную в терминале, из которого запускаете Streamlit:
+
+```powershell
+$env:MOVIEMATCH_API_URL = "http://127.0.0.1:8001"
+.\venv\Scripts\python.exe -m streamlit run frontend/app.py --server.port 8501
+```
+
+Тайм-аут соединения — 5 секунд, ответа — 30 секунд. Ошибки соединения,
+HTTP 404/422, прочие HTTP-ошибки и неожиданный JSON показываются понятным сообщением.
+Streamlit не читает MovieLens, не загружает модели, не запускает обучение и evaluation.
+UI находится в `frontend/app.py`, HTTP-клиент — в `frontend/api_client.py`,
+отображение и управление результатами — в `frontend/display.py`.
+Клиент проверяет JSON через существующие схемы API без импорта ML-моделей.
+Тесты `tests/test_frontend.py` используют моки HTTP и не требуют работающего сервера.
 
 ## Тесты
 
@@ -87,8 +104,8 @@ Uvicorn требует путь `backend.main:app` (с именем ASGI-при�
 
 ## REST API
 
-Базовый адрес — `http://127.0.0.1:8000`. Swagger UI:
-[GET /docs](http://127.0.0.1:8000/docs); OpenAPI: `/openapi.json`.
+Базовый адрес — `http://127.0.0.1:8001`. Swagger UI:
+[GET /docs](http://127.0.0.1:8001/docs); OpenAPI: `/openapi.json`.
 
 | Маршрут | Параметры и поведение |
 |---|---|
@@ -115,12 +132,12 @@ Uvicorn требует путь `backend.main:app` (с именем ASGI-при�
 Примеры из PowerShell:
 
 ```powershell
-Invoke-RestMethod "http://127.0.0.1:8000/health"
-Invoke-RestMethod "http://127.0.0.1:8000/movies?query=toy&limit=5"
-Invoke-RestMethod "http://127.0.0.1:8000/movies/1"
-Invoke-RestMethod "http://127.0.0.1:8000/recommendations/1?method=content_based&top_n=5"
-Invoke-RestMethod "http://127.0.0.1:8000/recommendations/1?method=item_based&top_n=10"
-Invoke-RestMethod "http://127.0.0.1:8000/recommendations/1?method=hybrid&alpha=0.75&top_n=10"
+Invoke-RestMethod "http://127.0.0.1:8001/health"
+Invoke-RestMethod "http://127.0.0.1:8001/movies?query=toy&limit=5"
+Invoke-RestMethod "http://127.0.0.1:8001/movies/1"
+Invoke-RestMethod "http://127.0.0.1:8001/recommendations/1?method=content_based&top_n=5"
+Invoke-RestMethod "http://127.0.0.1:8001/recommendations/1?method=item_based&top_n=10"
+Invoke-RestMethod "http://127.0.0.1:8001/recommendations/1?method=hybrid&alpha=0.75&top_n=10"
 ```
 
 Структура ответа рекомендаций (список ниже показан сокращённо):
