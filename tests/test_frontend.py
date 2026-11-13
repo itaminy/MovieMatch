@@ -1,4 +1,4 @@
-﻿"""Frontend tests use mocked HTTP; a running backend is never required."""
+"""Frontend tests use mocked HTTP; a running backend is never required."""
 import httpx
 import pytest
 from frontend.api_client import APIError, MovieMatchClient
@@ -136,3 +136,55 @@ def test_streamlit_flow(monkeypatch):
     assert len(app.sidebar.slider) == 2 and app.sidebar.slider[1].value == 1.0
     assert not app.exception
 
+
+
+@pytest.mark.parametrize("status", [502, 503, 504])
+def test_api_waking_up_http_errors(status):
+    with pytest.raises(APIError, match="Render") as error:
+        client(lambda r: httpx.Response(status)).search_movies("Toy")
+    assert "повторите" in str(error.value)
+    assert "Аналитика" in str(error.value)
+
+
+def test_timeout_does_not_retry_automatically():
+    requests = []
+    def handler(request):
+        requests.append(request)
+        raise httpx.ReadTimeout("slow startup", request=request)
+    with pytest.raises(APIError, match="1–2 минуты"):
+        client(handler).recommend(1)
+    assert len(requests) == 1
+
+
+def test_streamlit_displays_unavailability(monkeypatch):
+    from streamlit.testing.v1 import AppTest
+    from frontend.api_client import API_UNAVAILABLE_MESSAGE
+    def unavailable(*args, **kwargs):
+        raise APIError(API_UNAVAILABLE_MESSAGE)
+    monkeypatch.setattr(MovieMatchClient, "search_movies", unavailable)
+    app = AppTest.from_file("../frontend/app.py").run()
+    app.text_input[0].input("Toy").run()
+    app.button[0].click().run()
+    assert not app.exception
+    assert "Render" in app.error[0].value
+    assert app.button[1].disabled
+
+
+def test_community_cloud_root_secrets(monkeypatch):
+    from streamlit.testing.v1 import AppTest
+    monkeypatch.delenv("MOVIEMATCH_API_URL", raising=False)
+    app = AppTest.from_file("../frontend/app.py")
+    app.secrets["MOVIEMATCH_API_URL"] = "https://api.example.test"
+    app.run()
+    assert not app.exception
+    assert any("https://api.example.test" in caption.value for caption in app.caption)
+
+
+def test_environment_precedes_streamlit_secrets(monkeypatch):
+    from streamlit.testing.v1 import AppTest
+    monkeypatch.setenv("MOVIEMATCH_API_URL", "https://env.example.test")
+    app = AppTest.from_file("../frontend/app.py")
+    app.secrets["MOVIEMATCH_API_URL"] = "https://secrets.example.test"
+    app.run()
+    assert not app.exception
+    assert any("https://env.example.test" in caption.value for caption in app.caption)

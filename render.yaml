@@ -1,0 +1,16 @@
+﻿# FastAPI only. Streamlit is deployed separately on Community Cloud.
+services:
+  - type: web
+    name: moviematch-api
+    runtime: python
+    region: frankfurt
+    plan: free
+    autoDeployTrigger: "off"
+    buildCommand: python -m pip install -r requirements.txt && python -m pip check && python -m deployment.prepare_data
+    startCommand: python -m deployment.start api
+    healthCheckPath: /health
+    envVars:
+      - key: OPENBLAS_NUM_THREADS
+        value: "1"
+      - key: OMP_NUM_THREADS
+        value: "1"

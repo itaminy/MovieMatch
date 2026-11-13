@@ -34,3 +34,6 @@ htmlcov/
 /reports/figures/
 /reports/summary.json
 /reports/evaluation/
+
+# Streamlit local secrets
+**/.streamlit/secrets.toml

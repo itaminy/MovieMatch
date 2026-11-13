@@ -11,6 +11,13 @@ class APIError(Exception):
     """An error safe to display to the user."""
 
 
+API_UNAVAILABLE_MESSAGE = (
+    "Не удалось связаться с API. Бесплатный сервер Render может просыпаться после простоя "
+    "или быть временно недоступен. Подождите 1–2 минуты и повторите поиск или запрос рекомендаций. "
+    "Если ошибка сохраняется, проверьте адрес API и состояние FastAPI. Аналитика доступна независимо от API."
+)
+
+
 class MovieMatchClient:
     def __init__(self, base_url=None, transport=None):
         self.base_url = (base_url or os.getenv("MOVIEMATCH_API_URL", "http://127.0.0.1:8001")).rstrip("/")
@@ -22,12 +29,13 @@ class MovieMatchClient:
                 response = client.get(f"{self.base_url}{path}", params=params)
                 response.raise_for_status()
         except httpx.HTTPStatusError as exc:
-            messages = {404: "Фильм или маршрут не найден. Повторите поиск.",
+            messages = {502: API_UNAVAILABLE_MESSAGE, 503: API_UNAVAILABLE_MESSAGE,
+                        504: API_UNAVAILABLE_MESSAGE, 404: "Фильм или маршрут не найден. Повторите поиск.",
                         422: "API отклонил параметры. Проверьте настройки рекомендаций."}
             raise APIError(messages.get(exc.response.status_code,
                            f"Ошибка API (HTTP {exc.response.status_code}). Попробуйте позже.")) from exc
         except (httpx.RequestError, httpx.InvalidURL) as exc:
-            raise APIError("Не удалось связаться с API. Проверьте адрес и запуск FastAPI и повторите попытку.") from exc
+            raise APIError(API_UNAVAILABLE_MESSAGE) from exc
         try:
             validated = TypeAdapter(schema).validate_python(response.json())
             return ([movie.model_dump() for movie in validated]

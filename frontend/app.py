@@ -1,6 +1,7 @@
 """MovieMatch recommendations and analytics; no local models at UI runtime."""
 from pathlib import Path
 import sys
+import os
 
 # Streamlit executes this file with frontend/ on sys.path.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -8,6 +9,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import streamlit as st
 from frontend.api_client import APIError, MovieMatchClient
 from frontend.display import METHODS, genres_label, movie_label, recommendation_rows, request_key, sync_results
+
+
+def configured_api_url():
+    """Environment takes priority; support Community Cloud root-level Secrets too."""
+    value = os.getenv("MOVIEMATCH_API_URL", "").strip()
+    if value:
+        return value
+    try:
+        return st.secrets.get("MOVIEMATCH_API_URL")
+    except st.errors.StreamlitSecretNotFoundError:
+        return None
 
 
 def main():
@@ -20,7 +32,7 @@ def main():
         return
     st.write("Найдите похожие фильмы по жанрам и предпочтениям зрителей.")
     st.caption("1. Найдите фильм → 2. Настройте алгоритм → 3. Получите рекомендации")
-    client = MovieMatchClient()
+    client = MovieMatchClient(base_url=configured_api_url())
     with st.sidebar:
         st.header("Настройки рекомендаций")
         method = st.selectbox("Алгоритм", list(METHODS), format_func=METHODS.get)
