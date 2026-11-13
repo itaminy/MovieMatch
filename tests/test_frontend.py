@@ -172,19 +172,37 @@ def test_streamlit_displays_unavailability(monkeypatch):
 
 def test_community_cloud_root_secrets(monkeypatch):
     from streamlit.testing.v1 import AppTest
+    requested_urls = []
+    def search(self, query):
+        requested_urls.append(self.base_url)
+        return [MOVIE]
+    monkeypatch.setattr(MovieMatchClient, "search_movies", search)
     monkeypatch.delenv("MOVIEMATCH_API_URL", raising=False)
     app = AppTest.from_file("../frontend/app.py")
     app.secrets["MOVIEMATCH_API_URL"] = "https://api.example.test"
     app.run()
     assert not app.exception
-    assert any("https://api.example.test" in caption.value for caption in app.caption)
+    assert not any(caption.value.startswith("API:") for caption in app.sidebar.caption)
+    app.text_input[0].input("Toy").run()
+    app.button[0].click().run()
+    assert not app.exception
+    assert requested_urls == ["https://api.example.test"]
 
 
 def test_environment_precedes_streamlit_secrets(monkeypatch):
     from streamlit.testing.v1 import AppTest
+    requested_urls = []
+    def search(self, query):
+        requested_urls.append(self.base_url)
+        return [MOVIE]
+    monkeypatch.setattr(MovieMatchClient, "search_movies", search)
     monkeypatch.setenv("MOVIEMATCH_API_URL", "https://env.example.test")
     app = AppTest.from_file("../frontend/app.py")
     app.secrets["MOVIEMATCH_API_URL"] = "https://secrets.example.test"
     app.run()
     assert not app.exception
-    assert any("https://env.example.test" in caption.value for caption in app.caption)
+    assert not any(caption.value.startswith("API:") for caption in app.sidebar.caption)
+    app.text_input[0].input("Toy").run()
+    app.button[0].click().run()
+    assert not app.exception
+    assert requested_urls == ["https://env.example.test"]

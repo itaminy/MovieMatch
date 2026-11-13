@@ -41,7 +41,6 @@ def main():
         if method == "hybrid":
             alpha = st.slider("alpha — вес Item-Based", 0.0, 1.0, 1.0, 0.05)
             st.caption("0 — только сходство жанров (Content-Based), 1 — только оценки зрителей (Item-Based). Промежуточные значения смешивают оба подхода.")
-        st.caption(f"API: {client.base_url}")
     st.header("1. Найдите фильм")
     query = st.text_input("Название фильма", placeholder="Например, Toy Story")
     if st.session_state.get("search_query") != query.strip():
