@@ -1,0 +1,193 @@
+{
+  "schema_version": 1,
+  "source": "MovieLens Latest Small; EDA + offline temporal evaluation",
+  "overview": {
+    "counts": {
+      "movies": 9742,
+      "users": 610,
+      "ratings": 100836,
+      "valid_rating_values": 100836
+    },
+    "mean_rating": 3.501556983616962,
+    "rating_distribution": {
+      "0.5": 1370,
+      "1.0": 2811,
+      "1.5": 1791,
+      "2.0": 7551,
+      "2.5": 5550,
+      "3.0": 20047,
+      "3.5": 13136,
+      "4.0": 26818,
+      "4.5": 8551,
+      "5.0": 13211
+    },
+    "genres": {
+      "Drama": 4361,
+      "Comedy": 3756,
+      "Thriller": 1894,
+      "Action": 1828,
+      "Romance": 1596,
+      "Adventure": 1263,
+      "Crime": 1199,
+      "Sci-Fi": 980,
+      "Horror": 978,
+      "Fantasy": 779,
+      "Children": 664,
+      "Animation": 611,
+      "Mystery": 573,
+      "Documentary": 440,
+      "War": 382,
+      "Musical": 334,
+      "Western": 167,
+      "IMAX": 158,
+      "Film-Noir": 87
+    },
+    "top_10_movies": [
+      {
+        "movieId": 356,
+        "title": "Forrest Gump (1994)",
+        "rating_count": 329
+      },
+      {
+        "movieId": 318,
+        "title": "Shawshank Redemption, The (1994)",
+        "rating_count": 317
+      },
+      {
+        "movieId": 296,
+        "title": "Pulp Fiction (1994)",
+        "rating_count": 307
+      },
+      {
+        "movieId": 593,
+        "title": "Silence of the Lambs, The (1991)",
+        "rating_count": 279
+      },
+      {
+        "movieId": 2571,
+        "title": "Matrix, The (1999)",
+        "rating_count": 278
+      },
+      {
+        "movieId": 260,
+        "title": "Star Wars: Episode IV - A New Hope (1977)",
+        "rating_count": 251
+      },
+      {
+        "movieId": 480,
+        "title": "Jurassic Park (1993)",
+        "rating_count": 238
+      },
+      {
+        "movieId": 110,
+        "title": "Braveheart (1995)",
+        "rating_count": 237
+      },
+      {
+        "movieId": 589,
+        "title": "Terminator 2: Judgment Day (1991)",
+        "rating_count": 224
+      },
+      {
+        "movieId": 527,
+        "title": "Schindler's List (1993)",
+        "rating_count": 220
+      }
+    ]
+  },
+  "metrics": [
+    {
+      "method": "content_based",
+      "k": 5,
+      "precision_at_k": 0.009830508474576272,
+      "recall_at_k": 0.00581480605833021,
+      "ndcg_at_k": 0.01122643442052889,
+      "catalog_coverage": 0.0632295719844358
+    },
+    {
+      "method": "content_based",
+      "k": 10,
+      "precision_at_k": 0.0088135593220339,
+      "recall_at_k": 0.009311038828525575,
+      "ndcg_at_k": 0.011639087771733505,
+      "catalog_coverage": 0.11357003891050584
+    },
+    {
+      "method": "item_based",
+      "k": 5,
+      "precision_at_k": 0.09728813559322035,
+      "recall_at_k": 0.044280555103827224,
+      "ndcg_at_k": 0.10532287692687331,
+      "catalog_coverage": 0.039153696498054474
+    },
+    {
+      "method": "item_based",
+      "k": 10,
+      "precision_at_k": 0.08627118644067798,
+      "recall_at_k": 0.08119214718382253,
+      "ndcg_at_k": 0.10782523019442802,
+      "catalog_coverage": 0.05654182879377432
+    },
+    {
+      "method": "popularity",
+      "k": 5,
+      "precision_at_k": 0.07355932203389831,
+      "recall_at_k": 0.030667384441725606,
+      "ndcg_at_k": 0.08229330758597539,
+      "catalog_coverage": 0.0070525291828793775
+    },
+    {
+      "method": "popularity",
+      "k": 10,
+      "precision_at_k": 0.06033898305084746,
+      "recall_at_k": 0.050358029435646705,
+      "ndcg_at_k": 0.07823365326477558,
+      "catalog_coverage": 0.011916342412451361
+    },
+    {
+      "method": "hybrid",
+      "k": 5,
+      "precision_at_k": 0.09728813559322035,
+      "recall_at_k": 0.044280555103827224,
+      "ndcg_at_k": 0.10532287692687331,
+      "catalog_coverage": 0.039153696498054474
+    },
+    {
+      "method": "hybrid",
+      "k": 10,
+      "precision_at_k": 0.08627118644067798,
+      "recall_at_k": 0.08119214718382253,
+      "ndcg_at_k": 0.10782523019442802,
+      "catalog_coverage": 0.05654182879377432
+    }
+  ],
+  "validation": [
+    {
+      "alpha": 0.0,
+      "ndcg_at_10": 0.007930164914446647
+    },
+    {
+      "alpha": 0.25,
+      "ndcg_at_10": 0.049267004236761634
+    },
+    {
+      "alpha": 0.5,
+      "ndcg_at_10": 0.08769751564571185
+    },
+    {
+      "alpha": 0.75,
+      "ndcg_at_10": 0.12211963215505267
+    },
+    {
+      "alpha": 1.0,
+      "ndcg_at_10": 0.12377494193940371
+    }
+  ],
+  "selected_alpha": 1.0,
+  "source_sha256": {
+    "eda": "f5cb9a8754083e2828066cd8626bf6f34e361fb1411315b51cc9b4ca44b05ac1",
+    "metrics": "37a0b291eba04f1dfbfc8ffbb4c561cc530868a90d4e755388421ce75b3f8e15",
+    "validation": "de868adb642280952a9dec63f4935628862b3c61ee6fb4414b761e4499bc4f51",
+    "experiment": "871e0e63e4cf7aa6139b8aacb7eca78b0f4e57fd4b7b40bfbe7d409b112719a3"
+  }
+}

@@ -1,4 +1,4 @@
-﻿"""MovieMatch Streamlit entry point: HTTP only, no local datasets or models."""
+"""MovieMatch recommendations and analytics; no local models at UI runtime."""
 from pathlib import Path
 import sys
 
@@ -13,6 +13,11 @@ from frontend.display import METHODS, genres_label, movie_label, recommendation_
 def main():
     st.set_page_config(page_title="MovieMatch", page_icon="🎬", layout="wide")
     st.title("MovieMatch")
+    page = st.sidebar.radio("Раздел", ["Рекомендации", "Аналитика"], key="page")
+    if page == "Аналитика":
+        from frontend.analytics import render_analytics
+        render_analytics()
+        return
     st.write("Найдите похожие фильмы по жанрам и предпочтениям зрителей.")
     st.caption("1. Найдите фильм → 2. Настройте алгоритм → 3. Получите рекомендации")
     client = MovieMatchClient()
