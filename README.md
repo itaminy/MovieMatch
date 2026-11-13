@@ -1,5 +1,7 @@
 # MovieMatch
 
+[![CI](https://github.com/itaminy/MovieMatch/actions/workflows/ci.yml/badge.svg)](https://github.com/itaminy/MovieMatch/actions/workflows/ci.yml)
+
 MovieMatch — рекомендательная система фильмов с машинным обучением.
 На текущем этапе доступны FastAPI API, пользовательский интерфейс Streamlit,
 загрузка и проверка CSV MovieLens, исследовательский анализ данных (EDA)
@@ -621,3 +623,49 @@ Hybrid на test. Alpha подбирался исключительно на val
 и не превзошёл его. Test использовался только для итоговой оценки после обучения
 на полном train. Разбиение времени выполняется внутри пользователя, не по общему
 временному срезу; эти результаты нельзя сравнивать с выдачей serving API напрямую.
+
+## Continuous Integration (GitHub Actions)
+
+Workflow `.github/workflows/ci.yml` запускается при каждом `push` в любую ветку
+и при событиях `pull_request` (открытие, обновление и повторное открытие).
+Задача `Python 3.14 checks` использует `ubuntu-latest` и стабильный CPython 3.14,
+соответствующий поддерживаемой версии проекта. `actions/setup-python` кеширует pip
+с ключом, зависящим от `requirements.txt`; зависимости устанавливаются при каждом запуске.
+
+Автоматические проверки:
+
+- установка зависимостей из `requirements.txt`;
+- `python -m pip check` — совместимость установленных пакетов;
+- импорт `backend.main` и `frontend.app` без запуска серверов;
+- `python -m pytest -q` — полный набор тестов, включая API и Streamlit AppTest.
+
+MovieLens для тестов **не нужен**: используются небольшие синтетические таблицы,
+временные CSV, моки HTTP и `dashboard_data/snapshot.json`, включённый в репозиторий.
+Папки локальных данных и отчётов не нужны. Полная offline evaluation в CI не запускается;
+тесты evaluation работают только на маленьких фикстурах. FastAPI и Streamlit как
+отдельные серверы не запускаются, пользовательские секреты GitHub не требуются.
+Workflow имеет только разрешение `contents: read` и не использует локальный `venv`.
+
+Локальная проверка из корня репозитория в активированном окружении Python 3.14:
+
+```text
+python -m pip install -r requirements.txt
+python -m pip check
+python -c "import backend.main; import frontend.app"
+python -m pytest -q
+```
+
+На Windows без активации замените `python` на `.\venv\Scripts\python.exe`.
+
+Зелёный статус CI означает, что все шаги прошли для соответствующего коммита.
+Красный статус означает ошибку: откройте запуск на вкладке
+[Actions](https://github.com/itaminy/MovieMatch/actions/workflows/ci.yml), выберите
+задачу и изучите первый неуспешный шаг. Ошибка установки может указывать на
+зависимости или сеть; ошибка pytest содержит имя теста и traceback.
+Отменённый или пропущенный запуск не является успешной проверкой.
+Badge в начале README показывает статус workflow, а проверка конкретного PR
+отображается в его разделе Checks.
+
+Для первой проверки в GitHub самостоятельно отправьте изменения в ветку и откройте
+pull request. При необходимости разрешите Actions в Settings → Actions → General.
+Локальные pytest и проверка YAML не заменяют реальный запуск на Ubuntu в GitHub.
