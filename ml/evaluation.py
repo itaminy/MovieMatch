@@ -8,6 +8,7 @@ import pandas as pd
 
 from ml.collaborative import ItemBasedCollaborativeRecommender
 from ml.content_based import ContentBasedRecommender
+from ml.hybrid import combine_scores, validate_alpha
 
 
 def _validate_k(k):
@@ -102,7 +103,8 @@ def popularity_recommendations(train, seen_movie_ids, k=10):
     return counts.sort_values(["count", "movieId"], ascending=[False, True])["movieId"].head(k).tolist()
 
 
-def _stream_rankings(model, seeds_by_user, seen_by_user, catalog_ids, k, progress=None):
+def _stream_rankings(model, seeds_by_user, seen_by_user, catalog_ids, k, progress=None,
+                     return_scores=False):
     """Stream one seed's neighbors once, accumulating user/item scores.
 
     This holds U×M score totals, not an M×M item similarity matrix. Neighbor
@@ -125,20 +127,86 @@ def _stream_rankings(model, seeds_by_user, seen_by_user, catalog_ids, k, progres
             totals[user_pos, cols] += scores
         if progress and (step % 500 == 0 or step == len(seed_users)):
             progress(f"{type(model).__name__}: {step}/{len(seed_users)} seeds")
+    # Mask viewed films before either individual or weighted ranking.
+    for user_pos, uid in enumerate(users):
+        for mid in seen_by_user[uid]:
+            if mid in positions:
+                totals[user_pos, positions[mid]] = 0
+    if return_scores:
+        return users, ids, totals
+    return _rank_totals(users, ids, totals, k)
+
+
+def _rank_totals(users, ids, totals, k):
     rankings = {}
     for user_pos, uid in enumerate(users):
         scores = totals[user_pos]
-        for mid in seen_by_user[uid]:
-            if mid in positions:
-                scores[positions[mid]] = 0
         candidates = np.flatnonzero(scores > 0)
         order = np.lexsort((ids[candidates], -scores[candidates]))
         rankings[uid] = ids[candidates[order[:k]]].tolist()
     return rankings
 
 
+def _metric_rows(name, rankings, relevant, users, catalog_size, ks):
+    rows = []
+    for k in ks:
+        recommended = set().union(*(set(rankings[uid][:k]) for uid in users))
+        row = {"method": name, "k": int(k), "users": len(users)}
+        for metric, function in [("precision", precision_at_k), ("recall", recall_at_k), ("ndcg", ndcg_at_k)]:
+            row[f"{metric}_at_k"] = float(np.mean([function(rankings[uid], relevant[uid], k) for uid in users]))
+        row.update({"catalog_coverage": len(recommended) / catalog_size,
+                    "user_coverage": sum(bool(rankings[uid][:k]) for uid in users) / len(users),
+                    "users_below_k": sum(len(rankings[uid]) < k for uid in users),
+                    "mean_list_length": float(np.mean([min(k, len(rankings[uid])) for uid in users]))})
+        rows.append(row)
+    return rows
+
+
+def tune_alpha(movies, train, *, alphas=(0, .25, .5, .75, 1), min_train=5,
+               min_test=1, min_common_users=3, progress=None):
+    """Accept ONLY outer train. Pick alpha on a second temporal 80/20 split.
+
+    No evaluable validation users is an error, never a test-based fallback.
+    Exact NDCG@10 ties choose the smaller alpha deterministically.
+    """
+    started = perf_counter()
+    alphas = list(alphas)
+    if not alphas:
+        raise ValueError("alphas must not be empty")
+    for alpha in alphas:
+        validate_alpha(alpha)
+    alphas = sorted(set(float(alpha) for alpha in alphas))
+    fit, validation = temporal_split(train, min_train=min_train, min_test=min_test)
+    catalog = movies[movies["movieId"].isin(fit["movieId"])].sort_values("movieId")
+    seeds = {int(uid): sorted(set(group.movieId)) for uid, group in fit[fit.rating >= 4].groupby("userId")}
+    relevant = {int(uid): set(group.movieId) for uid, group in validation[validation.rating >= 4].groupby("userId")}
+    users = sorted(set(seeds) & set(relevant))
+    if not users:
+        raise ValueError("No evaluable validation users; alpha cannot be selected without validation")
+    seeds = {uid: seeds[uid] for uid in users}
+    seen = {int(uid): set(group.movieId) for uid, group in fit.groupby("userId") if uid in seeds}
+    cb = ContentBasedRecommender(catalog)
+    cf = ItemBasedCollaborativeRecommender(catalog, fit, min_common_users=min_common_users)
+    _, ids, cb_scores = _stream_rankings(cb, seeds, seen, catalog.movieId, 10, progress, return_scores=True)
+    _, _, cf_scores = _stream_rankings(cf, seeds, seen, catalog.movieId, 10, progress, return_scores=True)
+    rows = []
+    for alpha in alphas:
+        rankings = _rank_totals(users, ids, combine_scores(cb_scores, cf_scores, alpha), 10)
+        for row in _metric_rows("hybrid", rankings, relevant, users, len(catalog), (5, 10)):
+            row["alpha"] = alpha
+            rows.append(row)
+    best = min((row for row in rows if row["k"] == 10),
+               key=lambda row: (-row["ndcg_at_k"], row["alpha"]))
+    return best["alpha"], {"selected_alpha": best["alpha"], "selection_metric": "ndcg_at_10",
+        "tie_break": "smallest alpha", "validation_fraction": .2,
+        "fit_rows": len(fit), "validation_rows": len(validation), "users": len(users),
+        "evaluated_user_ids": users, "catalog_size": len(catalog), "metrics": rows,
+        "elapsed_seconds": perf_counter() - started}
+
+
 def evaluate(movies, ratings, *, test_fraction=0.2, min_train=5, min_test=1,
-             min_common_users=3, ks=(5, 10), progress=None):
+             min_common_users=3, ks=(5, 10), progress=None, include_hybrid=False,
+             alphas=(0, .25, .5, .75, 1)):
     """Fit both models and a popularity baseline on exactly the same train."""
     started = perf_counter()
     ks = tuple(sorted(set(ks)))
@@ -147,6 +215,10 @@ def evaluate(movies, ratings, *, test_fraction=0.2, min_train=5, min_test=1,
     for k in ks:
         _validate_k(k)
     train, test = temporal_split(ratings, test_fraction, min_train, min_test)
+    tuning = None
+    if include_hybrid:
+        selected_alpha, tuning = tune_alpha(movies, train, alphas=alphas, min_train=min_train,
+            min_test=min_test, min_common_users=min_common_users, progress=progress)
     if movies["movieId"].isna().any() or movies["movieId"].duplicated().any():
         raise ValueError("movies must have non-null unique movieId values")
     known = set(movies["movieId"])
@@ -166,26 +238,23 @@ def evaluate(movies, ratings, *, test_fraction=0.2, min_train=5, min_test=1,
         "content_based": ContentBasedRecommender(catalog),
         "item_based": ItemBasedCollaborativeRecommender(catalog, train, min_common_users=min_common_users),
     }
-    rows, timings = [], {}
-    for name in [*models, "popularity"]:
+    rows, timings, component_scores = [], {}, {}
+    for name in [*models, "popularity", *(["hybrid"] if include_hybrid else [])]:
         model_started = perf_counter()
         if name == "popularity":
             rankings = {uid: popularity_recommendations(train, seen[uid], max(ks)) for uid in users}
+        elif name == "hybrid":
+            scores = combine_scores(component_scores["content_based"], component_scores["item_based"], selected_alpha)
+            rankings = _rank_totals(users, ids, scores, max(ks))
+        elif include_hybrid:
+            _, ids, scores = _stream_rankings(models[name], seeds, seen, catalog["movieId"],
+                                             max(ks), progress, return_scores=True)
+            component_scores[name] = scores
+            rankings = _rank_totals(users, ids, scores, max(ks))
         else:
             rankings = _stream_rankings(models[name], seeds, seen, catalog["movieId"], max(ks), progress)
         timings[name] = perf_counter() - model_started
-        for k in ks:
-            recommended = set().union(*(set(rankings[uid][:k]) for uid in users))
-            row = {"method": name, "k": int(k), "users": len(users)}
-            for metric, function in [("precision", precision_at_k), ("recall", recall_at_k), ("ndcg", ndcg_at_k)]:
-                row[f"{metric}_at_k"] = float(np.mean([function(rankings[uid], relevant[uid], k) for uid in users]))
-            row.update({
-                "catalog_coverage": len(recommended) / len(catalog),
-                "user_coverage": sum(bool(rankings[uid][:k]) for uid in users) / len(users),
-                "users_below_k": sum(len(rankings[uid]) < k for uid in users),
-                "mean_list_length": float(np.mean([min(k, len(rankings[uid])) for uid in users])),
-            })
-            rows.append(row)
+        rows.extend(_metric_rows(name, rankings, relevant, users, len(catalog), ks))
     summary = {
         "protocol": {"test_fraction": test_fraction, "min_train": min_train, "min_test": min_test,
                      "min_common_users": min_common_users, "relevance_threshold": 4.0,
@@ -201,4 +270,7 @@ def evaluate(movies, ratings, *, test_fraction=0.2, min_train=5, min_test=1,
         "model_ranking_seconds": timings, "elapsed_seconds": perf_counter() - started,
         "metrics": rows,
     }
+    if tuning is not None:
+        summary["validation"] = tuning
+        summary["protocol"]["selected_alpha"] = selected_alpha
     return pd.DataFrame(rows), summary
